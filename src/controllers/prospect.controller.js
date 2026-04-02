@@ -94,17 +94,12 @@ const searchProspectsByName = async (req, res, next) => {
         limit: parsedLimit,
       });
 
-    const data = rows.map((prospect) => {
-      const fullLastName = (prospect.apellidos || '').trim();
-      const [apellido_paterno, ...rest] = fullLastName.split(/\s+/).filter(Boolean);
-
-      return {
-        id: prospect.id,
-        nombre: prospect.nombre,
-        apellido_paterno: apellido_paterno || '',
-        apellido_materno: rest.join(' '),
-      };
-    });
+    const data = rows.map((prospect) => ({
+      id: prospect.id,
+      nombre: prospect.nombre,
+      apellido_paterno: prospect.apellido_paterno || '',
+      apellido_materno: prospect.apellido_materno || '',
+    }));
 
     res.status(200).json({
       success: true,

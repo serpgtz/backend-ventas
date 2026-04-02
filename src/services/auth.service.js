@@ -4,6 +4,7 @@ const User = require('../models/user.model');
 
 const SALT_ROUNDS = 10;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const hasText = (value) => typeof value === 'string' && value.trim() !== '';
 
 const getJwtSecret = () => {
   const secret = process.env.JWT_SECRET;
@@ -17,9 +18,25 @@ const getJwtSecret = () => {
   return secret;
 };
 
-const validateRegisterPayload = ({ email, password, nombre }) => {
-  if (!email || !password || !nombre) {
-    const error = new Error('email, password y nombre son obligatorios');
+const validateRegisterPayload = ({
+  email,
+  password,
+  nombre,
+  apellido_paterno,
+  apellido_materno,
+  tel,
+}) => {
+  if (
+    !hasText(email) ||
+    !hasText(password) ||
+    !hasText(nombre) ||
+    !hasText(apellido_paterno) ||
+    !hasText(apellido_materno) ||
+    !hasText(tel)
+  ) {
+    const error = new Error(
+      'email, password, nombre, apellido_paterno, apellido_materno y tel son obligatorios'
+    );
     error.statusCode = 400;
     throw error;
   }
@@ -40,13 +57,17 @@ const validateRegisterPayload = ({ email, password, nombre }) => {
 
   return {
     nombre: nombre.trim(),
+    apellido_paterno: apellido_paterno.trim(),
+    apellido_materno: apellido_materno.trim(),
+    tel: tel.trim(),
     email: normalizedEmail,
     password,
   };
 };
 
 const register = async (payload) => {
-  const { email, password, nombre } = validateRegisterPayload(payload);
+  const { email, password, nombre, apellido_paterno, apellido_materno, tel } =
+    validateRegisterPayload(payload);
 
   const existingUser = await User.findOne({ where: { email } });
   if (existingUser) {
@@ -60,6 +81,9 @@ const register = async (payload) => {
   const user = await User.create({
     email,
     nombre,
+    apellido_paterno,
+    apellido_materno,
+    tel,
     password: hashedPassword,
   });
 
@@ -67,6 +91,9 @@ const register = async (payload) => {
     id: user.id,
     email: user.email,
     nombre: user.nombre,
+    apellido_paterno: user.apellido_paterno,
+    apellido_materno: user.apellido_materno,
+    tel: user.tel,
   };
 };
 

@@ -13,9 +13,13 @@ const Prospect = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
     },
-    apellidos: {
+    apellido_paterno: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
+    },
+    apellido_materno: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
     telefono: {
       type: DataTypes.STRING,

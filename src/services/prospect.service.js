@@ -3,7 +3,14 @@ const { Op, fn, col, where, literal } = require('sequelize');
 const uploadToDropbox = require('../utils/uploadToDropbox');
 const getDropboxTemporaryLink = require('../utils/getDropboxTemporaryLink');
 
-const REQUIRED_FIELDS = ['nombre', 'apellidos', 'telefono', 'dependencia', 'ingresos'];
+const REQUIRED_FIELDS = [
+  'nombre',
+  'apellido_paterno',
+  'apellido_materno',
+  'telefono',
+  'dependencia',
+  'ingresos',
+];
 const SCORE_FIELDS = ['perfil', 'interes', 'decision'];
 const SCORE_MAP = {
   A: 3,
@@ -34,6 +41,30 @@ const buildBadRequest = (message) => {
   const error = new Error(message);
   error.statusCode = 400;
   return error;
+};
+
+const normalizeNamePayload = (payload = {}) => {
+  const normalized = { ...payload };
+
+  if (
+    normalized.apellidos &&
+    (!normalized.apellido_paterno || !normalized.apellido_materno)
+  ) {
+    const fullLastName = String(normalized.apellidos).trim();
+    const [apellido_paterno, ...rest] = fullLastName.split(/\s+/).filter(Boolean);
+
+    if (!normalized.apellido_paterno && apellido_paterno) {
+      normalized.apellido_paterno = apellido_paterno;
+    }
+
+    if (!normalized.apellido_materno && rest.length > 0) {
+      normalized.apellido_materno = rest.join(' ');
+    }
+  }
+
+  delete normalized.apellidos;
+
+  return normalized;
 };
 
 const normalizeScoreValue = (field, value) => {
@@ -138,7 +169,8 @@ const prepareFileFields = async (files) => {
 };
 
 const createProspect = async (payload, files) => {
-  const sanitizedPayload = sanitizeScoreFields(payload);
+  const normalizedPayload = normalizeNamePayload(payload);
+  const sanitizedPayload = sanitizeScoreFields(normalizedPayload);
 
   validateRequiredFields(sanitizedPayload);
 
@@ -202,20 +234,29 @@ const searchProspectsByName = async ({ q, page = 1, limit = 10 }) => {
   const cappedLimit = Math.min(limit, 100);
   const offset = (page - 1) * cappedLimit;
 
-  const fullNameExpression = fn('CONCAT', col('nombre'), ' ', col('apellidos'));
+  const fullNameExpression = fn(
+    'CONCAT',
+    col('nombre'),
+    ' ',
+    col('apellido_paterno'),
+    ' ',
+    col('apellido_materno')
+  );
   const normalizedNombre = buildAccentInsensitiveExpression(col('nombre'));
-  const normalizedApellidos = buildAccentInsensitiveExpression(col('apellidos'));
+  const normalizedApellidoPaterno = buildAccentInsensitiveExpression(col('apellido_paterno'));
+  const normalizedApellidoMaterno = buildAccentInsensitiveExpression(col('apellido_materno'));
   const normalizedFullName = buildAccentInsensitiveExpression(fullNameExpression);
 
   const { rows, count } = await Prospect.findAndCountAll({
     where: {
       [Op.or]: [
         where(normalizedNombre, { [Op.like]: pattern }),
-        where(normalizedApellidos, { [Op.like]: pattern }),
+        where(normalizedApellidoPaterno, { [Op.like]: pattern }),
+        where(normalizedApellidoMaterno, { [Op.like]: pattern }),
         where(normalizedFullName, { [Op.like]: pattern }),
       ],
     },
-    order: [['nombre', 'ASC'], ['apellidos', 'ASC']],
+    order: [['nombre', 'ASC'], ['apellido_paterno', 'ASC'], ['apellido_materno', 'ASC']],
     limit: cappedLimit,
     offset,
   });
@@ -237,7 +278,8 @@ const getProspectById = async (id) => {
 
 const updateProspect = async (id, payload, files) => {
   const prospect = await getProspectById(id);
-  const sanitizedPayload = sanitizeScoreFields(payload);
+  const normalizedPayload = normalizeNamePayload(payload);
+  const sanitizedPayload = sanitizeScoreFields(normalizedPayload);
   const fileFields = await prepareFileFields(files);
 
   const hasIncomingScoreFields = SCORE_FIELDS.some((field) => {
