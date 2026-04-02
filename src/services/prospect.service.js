@@ -25,9 +25,21 @@ const SCORE_WEIGHTS = {
   decision: 1,
 };
 
+const DEPENDENCIA_VALUES = ['IMSS', 'ISSSTE', 'CFE', 'PEMEX'];
+
 const validateRequiredFields = (payload) => {
   const missing = REQUIRED_FIELDS.filter((field) => {
-    return payload[field] === undefined || payload[field] === null || payload[field] === '';
+    const value = payload[field];
+
+    if (value === undefined || value === null) {
+      return true;
+    }
+
+    if (typeof value === 'string' && value.trim() === '') {
+      return true;
+    }
+
+    return false;
   });
 
   if (missing.length > 0) {
@@ -79,6 +91,39 @@ const normalizeScoreValue = (field, value) => {
   }
 
   return normalized;
+};
+
+const normalizeDependencia = (value) => {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw buildBadRequest(
+      `El campo "dependencia" es obligatorio y debe ser: ${DEPENDENCIA_VALUES.join(', ')}`
+    );
+  }
+
+  const normalized = value.trim().toUpperCase();
+
+  if (!DEPENDENCIA_VALUES.includes(normalized)) {
+    throw buildBadRequest(
+      `El campo "dependencia" solo acepta valores: ${DEPENDENCIA_VALUES.join(', ')}`
+    );
+  }
+
+  return normalized;
+};
+
+const normalizeIngresos = (value) => {
+  if (value === undefined || value === null || String(value).trim() === '') {
+    throw buildBadRequest('El campo "ingresos" es obligatorio');
+  }
+
+  const normalized = String(value).trim().replace(/,/g, '');
+  const parsed = Number.parseFloat(normalized);
+
+  if (Number.isNaN(parsed) || parsed < 0) {
+    throw buildBadRequest('El campo "ingresos" debe ser un número válido mayor o igual a 0');
+  }
+
+  return parsed.toFixed(2);
 };
 
 const getNivel = (score, perfil) => {
@@ -173,6 +218,9 @@ const createProspect = async (payload, files) => {
   const sanitizedPayload = sanitizeScoreFields(normalizedPayload);
 
   validateRequiredFields(sanitizedPayload);
+
+  sanitizedPayload.dependencia = normalizeDependencia(sanitizedPayload.dependencia);
+  sanitizedPayload.ingresos = normalizeIngresos(sanitizedPayload.ingresos);
 
   const scoreFields = calculateScore(sanitizedPayload);
   const fileFields = await prepareFileFields(files);
@@ -281,6 +329,14 @@ const updateProspect = async (id, payload, files) => {
   const normalizedPayload = normalizeNamePayload(payload);
   const sanitizedPayload = sanitizeScoreFields(normalizedPayload);
   const fileFields = await prepareFileFields(files);
+
+  if (sanitizedPayload.dependencia !== undefined) {
+    sanitizedPayload.dependencia = normalizeDependencia(sanitizedPayload.dependencia);
+  }
+
+  if (sanitizedPayload.ingresos !== undefined) {
+    sanitizedPayload.ingresos = normalizeIngresos(sanitizedPayload.ingresos);
+  }
 
   const hasIncomingScoreFields = SCORE_FIELDS.some((field) => {
     return Object.prototype.hasOwnProperty.call(sanitizedPayload, field);

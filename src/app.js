@@ -20,6 +20,14 @@ app.use('/api/prospects', prospectRoutes);
 
 app.use((error, _req, res, _next) => {
   const statusCode = error.statusCode || 500;
+  const detail = error?.original?.sqlMessage || error?.original?.message || error?.message;
+
+  console.error('[API ERROR]', {
+    statusCode,
+    message: error?.message,
+    detail,
+    stack: error?.stack,
+  });
 
   res.status(statusCode).json({
     success: false,
