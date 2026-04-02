@@ -1,16 +1,9 @@
-const Prospect = require('../models/prospect.model');
 const { Op, fn, col, where, literal } = require('sequelize');
+const { Prospect } = require('../models');
 const uploadToDropbox = require('../utils/uploadToDropbox');
 const getDropboxTemporaryLink = require('../utils/getDropboxTemporaryLink');
+const AppError = require('../errors/AppError');
 
-const REQUIRED_FIELDS = [
-  'nombre',
-  'apellido_paterno',
-  'apellido_materno',
-  'telefono',
-  'dependencia',
-  'ingresos',
-];
 const SCORE_FIELDS = ['perfil', 'interes', 'decision'];
 const SCORE_MAP = {
   A: 3,
@@ -18,7 +11,6 @@ const SCORE_MAP = {
   C: 1,
 };
 
-// Perfil pesa más que interés y decisión.
 const SCORE_WEIGHTS = {
   perfil: 2,
   interes: 1,
@@ -27,41 +19,12 @@ const SCORE_WEIGHTS = {
 
 const DEPENDENCIA_VALUES = ['IMSS', 'ISSSTE', 'CFE', 'PEMEX'];
 
-const validateRequiredFields = (payload) => {
-  const missing = REQUIRED_FIELDS.filter((field) => {
-    const value = payload[field];
-
-    if (value === undefined || value === null) {
-      return true;
-    }
-
-    if (typeof value === 'string' && value.trim() === '') {
-      return true;
-    }
-
-    return false;
-  });
-
-  if (missing.length > 0) {
-    const error = new Error(`Faltan campos obligatorios: ${missing.join(', ')}`);
-    error.statusCode = 400;
-    throw error;
-  }
-};
-
-const buildBadRequest = (message) => {
-  const error = new Error(message);
-  error.statusCode = 400;
-  return error;
-};
+const buildBadRequest = (message) => new AppError(message, 400);
 
 const normalizeNamePayload = (payload = {}) => {
   const normalized = { ...payload };
 
-  if (
-    normalized.apellidos &&
-    (!normalized.apellido_paterno || !normalized.apellido_materno)
-  ) {
+  if (normalized.apellidos && (!normalized.apellido_paterno || !normalized.apellido_materno)) {
     const fullLastName = String(normalized.apellidos).trim();
     const [apellido_paterno, ...rest] = fullLastName.split(/\s+/).filter(Boolean);
 
@@ -75,7 +38,6 @@ const normalizeNamePayload = (payload = {}) => {
   }
 
   delete normalized.apellidos;
-
   return normalized;
 };
 
@@ -127,8 +89,6 @@ const normalizeIngresos = (value) => {
 };
 
 const getNivel = (score, perfil) => {
-  // Regla comercial prioritaria:
-  // Si el perfil no califica (C), siempre se considera prospecto frío.
   if (perfil === 'C') {
     return 'frio';
   }
@@ -150,8 +110,6 @@ const calculateScore = (payload) => {
     SCORE_MAP[interes] * SCORE_WEIGHTS.interes +
     SCORE_MAP[decision] * SCORE_WEIGHTS.decision;
 
-  // Para que también respete el orden comercial en listados,
-  // perfil C se limita al rango frío (2-4).
   if (perfil === 'C') {
     score_total = Math.min(score_total, 4);
   }
@@ -170,7 +128,6 @@ const calculateScore = (payload) => {
 const sanitizeScoreFields = (payload = {}) => {
   const result = { ...payload };
 
-  // Estos campos siempre deben calcularse en backend.
   delete result.score_total;
   delete result.nivel_venta;
   delete result.estado;
@@ -185,39 +142,34 @@ const prepareFileFields = async (files) => {
   if (files?.comprobante?.[0]) {
     try {
       const comprobantePath = await uploadToDropbox(files.comprobante[0]);
-
       result.comprobante_ingresos = comprobantePath;
       result.fecha_subida_comprobante = now;
-    } catch (error) {
-      console.error('🔥 ERROR DROPBOX COMPROBANTE:', error);
-      console.error('🔥 DETALLE:', error?.response?.data);
-
-      throw new Error('Error subiendo comprobante a Dropbox');
+    } catch (_error) {
+      throw new AppError('Error subiendo comprobante a Dropbox', 502);
     }
   }
 
   if (files?.identificacion?.[0]) {
     try {
       const identificacionPath = await uploadToDropbox(files.identificacion[0]);
-
       result.identificacion = identificacionPath;
       result.fecha_subida_identificacion = now;
-    } catch (error) {
-      console.error('🔥 ERROR DROPBOX IDENTIFICACION:', error);
-      console.error('🔥 DETALLE:', error?.response?.data);
-
-      throw new Error('Error subiendo identificación a Dropbox');
+    } catch (_error) {
+      throw new AppError('Error subiendo identificación a Dropbox', 502);
     }
   }
 
   return result;
 };
 
-const createProspect = async (payload, files) => {
+const scopedProspectWhere = (userId, extra = {}) => ({
+  userId,
+  ...extra,
+});
+
+const createProspect = async (payload, files, userId) => {
   const normalizedPayload = normalizeNamePayload(payload);
   const sanitizedPayload = sanitizeScoreFields(normalizedPayload);
-
-  validateRequiredFields(sanitizedPayload);
 
   sanitizedPayload.dependencia = normalizeDependencia(sanitizedPayload.dependencia);
   sanitizedPayload.ingresos = normalizeIngresos(sanitizedPayload.ingresos);
@@ -229,13 +181,15 @@ const createProspect = async (payload, files) => {
     ...sanitizedPayload,
     ...scoreFields,
     ...fileFields,
+    userId,
   });
 
   return created;
 };
 
-const getAllProspects = async () => {
+const getAllProspects = async (userId) => {
   return Prospect.findAll({
+    where: scopedProspectWhere(userId),
     order: [
       [
         literal(`CASE
@@ -276,7 +230,7 @@ const buildAccentInsensitiveExpression = (expression) => {
   }, fn('LOWER', expression));
 };
 
-const searchProspectsByName = async ({ q, page = 1, limit = 10 }) => {
+const searchProspectsByName = async ({ q, page = 1, limit = 10, userId }) => {
   const normalized = normalizeSearchTerm(q);
   const pattern = `%${normalized}%`;
   const cappedLimit = Math.min(limit, 100);
@@ -290,20 +244,21 @@ const searchProspectsByName = async ({ q, page = 1, limit = 10 }) => {
     ' ',
     col('apellido_materno')
   );
+
   const normalizedNombre = buildAccentInsensitiveExpression(col('nombre'));
   const normalizedApellidoPaterno = buildAccentInsensitiveExpression(col('apellido_paterno'));
   const normalizedApellidoMaterno = buildAccentInsensitiveExpression(col('apellido_materno'));
   const normalizedFullName = buildAccentInsensitiveExpression(fullNameExpression);
 
   const { rows, count } = await Prospect.findAndCountAll({
-    where: {
+    where: scopedProspectWhere(userId, {
       [Op.or]: [
         where(normalizedNombre, { [Op.like]: pattern }),
         where(normalizedApellidoPaterno, { [Op.like]: pattern }),
         where(normalizedApellidoMaterno, { [Op.like]: pattern }),
         where(normalizedFullName, { [Op.like]: pattern }),
       ],
-    },
+    }),
     order: [['nombre', 'ASC'], ['apellido_paterno', 'ASC'], ['apellido_materno', 'ASC']],
     limit: cappedLimit,
     offset,
@@ -312,20 +267,20 @@ const searchProspectsByName = async ({ q, page = 1, limit = 10 }) => {
   return { rows, count, page, limit: cappedLimit };
 };
 
-const getProspectById = async (id) => {
-  const prospect = await Prospect.findByPk(id);
+const getProspectById = async (id, userId) => {
+  const prospect = await Prospect.findOne({
+    where: scopedProspectWhere(userId, { id }),
+  });
 
   if (!prospect) {
-    const error = new Error('Prospecto no encontrado');
-    error.statusCode = 404;
-    throw error;
+    throw new AppError('Prospecto no encontrado', 404);
   }
 
   return prospect;
 };
 
-const updateProspect = async (id, payload, files) => {
-  const prospect = await getProspectById(id);
+const updateProspect = async (id, payload, files, userId) => {
+  const prospect = await getProspectById(id, userId);
   const normalizedPayload = normalizeNamePayload(payload);
   const sanitizedPayload = sanitizeScoreFields(normalizedPayload);
   const fileFields = await prepareFileFields(files);
@@ -346,12 +301,9 @@ const updateProspect = async (id, payload, files) => {
 
   if (hasIncomingScoreFields) {
     const scoringPayload = {
-      perfil:
-        sanitizedPayload.perfil !== undefined ? sanitizedPayload.perfil : prospect.perfil,
-      interes:
-        sanitizedPayload.interes !== undefined ? sanitizedPayload.interes : prospect.interes,
-      decision:
-        sanitizedPayload.decision !== undefined ? sanitizedPayload.decision : prospect.decision,
+      perfil: sanitizedPayload.perfil !== undefined ? sanitizedPayload.perfil : prospect.perfil,
+      interes: sanitizedPayload.interes !== undefined ? sanitizedPayload.interes : prospect.interes,
+      decision: sanitizedPayload.decision !== undefined ? sanitizedPayload.decision : prospect.decision,
     };
 
     scoreFields = calculateScore(scoringPayload);
@@ -366,22 +318,29 @@ const updateProspect = async (id, payload, files) => {
   return prospect;
 };
 
-const deleteProspect = async (id) => {
-  const prospect = await getProspectById(id);
+const deleteProspect = async (id, userId) => {
+  const prospect = await getProspectById(id, userId);
   await prospect.destroy();
 };
 
-const getTemporaryFileLink = async (path) => {
+const getTemporaryFileLink = async ({ path, userId }) => {
   if (!path || typeof path !== 'string') {
-    const error = new Error('El parámetro "path" es obligatorio');
-    error.statusCode = 400;
-    throw error;
+    throw new AppError('El parámetro "path" es obligatorio', 400);
   }
 
   if (!path.startsWith('/prospectos/')) {
-    const error = new Error('Ruta inválida');
-    error.statusCode = 400;
-    throw error;
+    throw new AppError('Ruta inválida', 400);
+  }
+
+  const ownerProspect = await Prospect.findOne({
+    where: scopedProspectWhere(userId, {
+      [Op.or]: [{ comprobante_ingresos: path }, { identificacion: path }],
+    }),
+    attributes: ['id'],
+  });
+
+  if (!ownerProspect) {
+    throw new AppError('Archivo no encontrado para este usuario', 404);
   }
 
   return getDropboxTemporaryLink(path);
