@@ -9,6 +9,10 @@ const Prospect = sequelize.define(
       autoIncrement: true,
       primaryKey: true,
     },
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
     nombre: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -33,7 +37,6 @@ const Prospect = sequelize.define(
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
     },
-    // Criterios de scoring comercial (A/B/C)
     perfil: {
       type: DataTypes.ENUM('A', 'B', 'C'),
       allowNull: true,
@@ -46,7 +49,6 @@ const Prospect = sequelize.define(
       type: DataTypes.ENUM('A', 'B', 'C'),
       allowNull: true,
     },
-    // Resultado calculado automáticamente desde perfil/interes/decision
     score_total: {
       type: DataTypes.INTEGER,
       allowNull: true,

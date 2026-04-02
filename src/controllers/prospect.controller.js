@@ -26,11 +26,9 @@ const buildConcentradoByEstado = (prospects) => {
 
 const createProspect = async (req, res, next) => {
   try {
-    console.log(req.body);
-    console.log(req.files);
-
-    const prospect = await prospectService.createProspect(req.body, req.files);
+    const prospect = await prospectService.createProspect(req.body, req.files, req.user.userId);
     res.status(201).json({
+      success: true,
       message: 'Prospecto creado correctamente',
       data: mapProspectOutput(prospect),
     });
@@ -39,9 +37,9 @@ const createProspect = async (req, res, next) => {
   }
 };
 
-const getAllProspects = async (_req, res, next) => {
+const getAllProspects = async (req, res, next) => {
   try {
-    const prospects = (await prospectService.getAllProspects()).map(mapProspectOutput);
+    const prospects = (await prospectService.getAllProspects(req.user.userId)).map(mapProspectOutput);
     const concentrado = buildConcentradoByEstado(prospects);
 
     res.status(200).json({
@@ -49,7 +47,6 @@ const getAllProspects = async (_req, res, next) => {
       total: prospects.length,
       concentrado,
       data: prospects,
-      prospects,
     });
   } catch (error) {
     next(error);
@@ -58,40 +55,14 @@ const getAllProspects = async (_req, res, next) => {
 
 const searchProspectsByName = async (req, res, next) => {
   try {
-    const { q, limit = '10', page = '1' } = req.query;
-
-    if (!q || q.trim() === '') {
-      const error = new Error('El parámetro "q" es obligatorio');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    if (q.trim().length > 100) {
-      const error = new Error('El parámetro "q" no debe exceder 100 caracteres');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    const parsedLimit = Number.parseInt(limit, 10);
-    const parsedPage = Number.parseInt(page, 10);
-
-    if (!Number.isInteger(parsedLimit) || parsedLimit <= 0) {
-      const error = new Error('El parámetro "limit" debe ser un entero mayor a 0');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    if (!Number.isInteger(parsedPage) || parsedPage <= 0) {
-      const error = new Error('El parámetro "page" debe ser un entero mayor a 0');
-      error.statusCode = 400;
-      throw error;
-    }
+    const { q, limit = 10, page = 1 } = req.query;
 
     const { rows, count, page: currentPage, limit: currentLimit } =
       await prospectService.searchProspectsByName({
         q,
-        page: parsedPage,
-        limit: parsedLimit,
+        page,
+        limit,
+        userId: req.user.userId,
       });
 
     const data = rows.map((prospect) => ({
@@ -117,8 +88,8 @@ const searchProspectsByName = async (req, res, next) => {
 
 const getProspectById = async (req, res, next) => {
   try {
-    const prospect = await prospectService.getProspectById(req.params.id);
-    res.status(200).json({ data: mapProspectOutput(prospect) });
+    const prospect = await prospectService.getProspectById(req.params.id, req.user.userId);
+    res.status(200).json({ success: true, data: mapProspectOutput(prospect) });
   } catch (error) {
     next(error);
   }
@@ -126,8 +97,15 @@ const getProspectById = async (req, res, next) => {
 
 const updateProspect = async (req, res, next) => {
   try {
-    const prospect = await prospectService.updateProspect(req.params.id, req.body, req.files);
+    const prospect = await prospectService.updateProspect(
+      req.params.id,
+      req.body,
+      req.files,
+      req.user.userId
+    );
+
     res.status(200).json({
+      success: true,
       message: 'Prospecto actualizado correctamente',
       data: mapProspectOutput(prospect),
     });
@@ -138,8 +116,8 @@ const updateProspect = async (req, res, next) => {
 
 const deleteProspect = async (req, res, next) => {
   try {
-    await prospectService.deleteProspect(req.params.id);
-    res.status(200).json({ message: 'Prospecto eliminado correctamente' });
+    await prospectService.deleteProspect(req.params.id, req.user.userId);
+    res.status(200).json({ success: true, message: 'Prospecto eliminado correctamente' });
   } catch (error) {
     next(error);
   }
@@ -148,7 +126,12 @@ const deleteProspect = async (req, res, next) => {
 const getProspectFile = async (req, res, next) => {
   try {
     const { path } = req.query;
-    const link = await prospectService.getTemporaryFileLink(path);
+
+    const link = await prospectService.getTemporaryFileLink({
+      path,
+      userId: req.user.userId,
+    });
+
     res.redirect(link);
   } catch (error) {
     next(error);

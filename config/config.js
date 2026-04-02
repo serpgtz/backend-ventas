@@ -8,7 +8,9 @@ const base = {
   database: process.env.DB_NAME,
   host: process.env.DB_HOST,
   dialect: process.env.DB_DIALECT || 'mysql',
-  logging: false,
+  logging: process.env.DB_LOGGING === 'true' ? console.log : false,
+  seederStorage: 'sequelize',
+  migrationStorage: 'sequelize',
 };
 
 module.exports = {
