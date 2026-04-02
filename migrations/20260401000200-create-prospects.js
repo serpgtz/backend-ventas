@@ -2,7 +2,7 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable('Prospects', {
+    await queryInterface.createTable('prospects', {
       id: {
         type: Sequelize.INTEGER,
         allowNull: false,
@@ -13,7 +13,7 @@ module.exports = {
         type: Sequelize.INTEGER,
         allowNull: true,
         references: {
-          model: 'Users',
+          model: 'users',
           key: 'id',
         },
         onUpdate: 'CASCADE',
@@ -99,12 +99,12 @@ module.exports = {
       },
     });
 
-    await queryInterface.addIndex('Prospects', ['userId'], {
+    await queryInterface.addIndex('prospects', ['userId'], {
       name: 'prospects_user_id_idx',
     });
   },
 
   async down(queryInterface) {
-    await queryInterface.dropTable('Prospects');
+    await queryInterface.dropTable('prospects');
   },
 };
