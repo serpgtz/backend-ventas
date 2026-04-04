@@ -167,6 +167,27 @@ const scopedProspectWhere = (userId, extra = {}) => ({
   ...extra,
 });
 
+const buildConcentradoFromRows = (rows = []) => {
+  const concentrado = {
+    caliente: 0,
+    tibio: 0,
+    frio: 0,
+    sin_estado: 0,
+  };
+
+  rows.forEach((row) => {
+    const estado = row.nivel_venta || 'sin_estado';
+    const total = Number(row.total || 0);
+
+    if (estado === 'caliente') concentrado.caliente += total;
+    else if (estado === 'tibio') concentrado.tibio += total;
+    else if (estado === 'frio') concentrado.frio += total;
+    else concentrado.sin_estado += total;
+  });
+
+  return concentrado;
+};
+
 const createProspect = async (payload, files, userId) => {
   const normalizedPayload = normalizeNamePayload(payload);
   const sanitizedPayload = sanitizeScoreFields(normalizedPayload);
@@ -187,9 +208,13 @@ const createProspect = async (payload, files, userId) => {
   return created;
 };
 
-const getAllProspects = async (userId) => {
-  return Prospect.findAll({
-    where: scopedProspectWhere(userId),
+const getAllProspects = async ({ userId, page = 1, limit = 5 }) => {
+  const cappedLimit = Math.min(limit, 100);
+  const offset = (page - 1) * cappedLimit;
+  const whereClause = scopedProspectWhere(userId);
+
+  const { rows, count } = await Prospect.findAndCountAll({
+    where: whereClause,
     order: [
       [
         literal(`CASE
@@ -203,7 +228,24 @@ const getAllProspects = async (userId) => {
       ['score_total', 'DESC'],
       ['createdAt', 'DESC'],
     ],
+    limit: cappedLimit,
+    offset,
   });
+
+  const groupedRows = await Prospect.findAll({
+    where: whereClause,
+    attributes: ['nivel_venta', [fn('COUNT', col('id')), 'total']],
+    group: ['nivel_venta'],
+    raw: true,
+  });
+
+  return {
+    rows,
+    count,
+    page,
+    limit: cappedLimit,
+    concentrado: buildConcentradoFromRows(groupedRows),
+  };
 };
 
 const normalizeSearchTerm = (value) => {

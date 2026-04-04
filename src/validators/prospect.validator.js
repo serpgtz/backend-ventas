@@ -13,6 +13,11 @@ const searchProspectsSchema = Joi.object({
   limit: Joi.number().integer().positive().max(100).default(10),
 });
 
+const listProspectsSchema = Joi.object({
+  page: Joi.number().integer().positive().default(1),
+  limit: Joi.number().integer().positive().max(100).default(5),
+});
+
 const prospectBaseSchema = {
   nombre: Joi.string().trim().min(2).max(120),
   apellido_paterno: Joi.string().trim().min(2).max(120),
@@ -60,6 +65,7 @@ const filePathQuerySchema = Joi.object({
 });
 
 module.exports = {
+  listProspectsSchema,
   idParamSchema,
   searchProspectsSchema,
   createProspectSchema,
