@@ -39,13 +39,28 @@ const createProspect = async (req, res, next) => {
 
 const getAllProspects = async (req, res, next) => {
   try {
-    const prospects = (await prospectService.getAllProspects(req.user.userId)).map(mapProspectOutput);
-    const concentrado = buildConcentradoByEstado(prospects);
+    const { page = 1, limit = 5 } = req.query;
+    const parsedPage = Number(page);
+    const parsedLimit = Number(limit);
+    const { rows, count, concentrado, page: currentPage, limit: currentLimit } =
+      await prospectService.getAllProspects({
+        userId: req.user.userId,
+        page: parsedPage,
+        limit: parsedLimit,
+      });
+
+    const prospects = rows.map(mapProspectOutput);
+    const fallbackConcentrado = buildConcentradoByEstado(prospects);
 
     res.status(200).json({
       success: true,
-      total: prospects.length,
-      concentrado,
+      total: count,
+      concentrado: concentrado || fallbackConcentrado,
+      pagination: {
+        page: currentPage,
+        limit: currentLimit,
+        total: count,
+      },
       data: prospects,
     });
   } catch (error) {

@@ -4,6 +4,7 @@ const authMiddleware = require('../middlewares/auth.middleware');
 const validate = require('../middlewares/validate.middleware');
 const prospectController = require('../controllers/prospect.controller');
 const {
+  listProspectsSchema,
   idParamSchema,
   searchProspectsSchema,
   createProspectSchema,
@@ -21,7 +22,7 @@ const uploadFields = upload.fields([
 router.use(authMiddleware);
 
 router.post('/', uploadFields, validate(createProspectSchema), prospectController.createProspect);
-router.get('/', prospectController.getAllProspects);
+router.get('/', validate(listProspectsSchema, 'query'), prospectController.getAllProspects);
 router.get('/search', validate(searchProspectsSchema, 'query'), prospectController.searchProspectsByName);
 router.get('/file', validate(filePathQuerySchema, 'query'), prospectController.getProspectFile);
 router.get('/:id', validate(idParamSchema, 'params'), prospectController.getProspectById);
