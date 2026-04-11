@@ -2,13 +2,25 @@ const { Dropbox } = require('dropbox');
 const fetch = require('node-fetch');
 
 const createDropboxClient = () => {
-  const token = process.env.DROPBOX_ACCESS_TOKEN;
+  const accessToken = process.env.DROPBOX_ACCESS_TOKEN;
+  const appKey = process.env.DROPBOX_APP_KEY;
+  const appSecret = process.env.DROPBOX_APP_SECRET;
+  const refreshToken = process.env.DROPBOX_REFRESH_TOKEN;
 
-  if (!token) {
-    return null;
+  if (accessToken) {
+    return new Dropbox({ accessToken, fetch });
   }
 
-  return new Dropbox({ accessToken: token, fetch });
+  if (appKey && appSecret && refreshToken) {
+    return new Dropbox({
+      clientId: appKey,
+      clientSecret: appSecret,
+      refreshToken,
+      fetch,
+    });
+  }
+
+  return null;
 };
 
 module.exports = createDropboxClient;

@@ -4,7 +4,7 @@ const getDropboxTemporaryLink = async (dropboxPath) => {
   const dbx = createDropboxClient();
 
   if (!dbx) {
-    const error = new Error('DROPBOX_ACCESS_TOKEN no configurado');
+    const error = new Error('Dropbox no configurado. Define DROPBOX_ACCESS_TOKEN o DROPBOX_APP_KEY, DROPBOX_APP_SECRET y DROPBOX_REFRESH_TOKEN');
     error.statusCode = 500;
     throw error;
   }
